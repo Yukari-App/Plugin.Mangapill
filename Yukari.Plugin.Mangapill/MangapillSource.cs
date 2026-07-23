@@ -214,13 +214,61 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         );
     }
 
-    public Task<IReadOnlyList<Chapter>> GetAllChaptersAsync(
+    public async Task<IReadOnlyList<Chapter>> GetAllChaptersAsync(
         string comicId,
         string language,
         CancellationToken ct = default
     )
     {
-        throw new NotImplementedException();
+        string chaptersUrl = $"{BaseUrl}/manga/{comicId}";
+
+        var html = await GetHTMLAsync(chaptersUrl, ct);
+        if (html == null)
+            return Array.Empty<Chapter>();
+
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html);
+
+        var chapterLinks = doc.DocumentNode.SelectNodes("//div[@id='chapters']//a");
+        if (chapterLinks is not { Count: > 0 })
+            return Array.Empty<Chapter>();
+
+        var chapters = new List<Chapter>();
+
+        // Mangapill returns chapters in descending order (newest first).
+        // Reverse to get chronological order (oldest first).
+        foreach (var link in chapterLinks.Reverse())
+        {
+            string href = link.GetAttributeValue("href", "");
+            string? chapterId = ExtractChapterIdFromUrl(href);
+            if (string.IsNullOrEmpty(chapterId))
+                continue;
+
+            string title = link.InnerText.Trim();
+
+            string? groupName = null;
+            if (title.StartsWith("Group "))
+            {
+                var parts = title.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2)
+                    groupName = parts[0] + " " + parts[1];
+            }
+
+            chapters.Add(
+                new Chapter(
+                    Id: chapterId,
+                    Title: null,
+                    Number: ExtractChapterNumber(title),
+                    Volume: null,
+                    Language: language,
+                    Groups: string.IsNullOrEmpty(groupName) ? Array.Empty<string>() : [groupName],
+                    LastUpdate: DateOnly.MinValue,
+                    Pages: null
+                )
+            );
+        }
+
+        return chapters;
     }
 
     public Task<IReadOnlyList<ChapterPage>> GetChapterPagesAsync(
@@ -331,6 +379,20 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         if (string.IsNullOrEmpty(url))
             return null;
         var match = Regex.Match(url, @"/manga/(\d+)/");
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private static string? ExtractChapterIdFromUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+        var match = Regex.Match(url, @"/chapters/([^/]+)");
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private static string? ExtractChapterNumber(string title)
+    {
+        var match = Regex.Match(title, @"Chapter\s+(\d+(\.\d+)?)");
         return match.Success ? match.Groups[1].Value : null;
     }
 
