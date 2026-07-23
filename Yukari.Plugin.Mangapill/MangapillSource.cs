@@ -134,7 +134,7 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         if (html == null)
             return Array.Empty<Comic>();
 
-        return await ParseComicListAsync(html);
+        return ParseComicListAsync(html);
     }
 
     public async Task<IReadOnlyList<Comic>> GetTrendingAsync(
@@ -152,7 +152,7 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         if (html == null)
             return Array.Empty<Comic>();
 
-        return await ParseComicListAsync(html);
+        return ParseComicListAsync(html);
     }
 
     public async Task<Comic?> GetDetailsAsync(string comicId, CancellationToken ct = default)
@@ -331,15 +331,12 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         return ValueTask.CompletedTask;
     }
 
-    private async Task<IReadOnlyList<Comic>> ParseComicListAsync(string html)
+    private IReadOnlyList<Comic> ParseComicListAsync(string html)
     {
         var doc = new HtmlDocument();
         doc.LoadHtml(html);
 
-        var items =
-            doc.DocumentNode.SelectNodes(
-                "//div[contains(@class, 'grid')]//div[contains(@class, 'relative')]//.."
-            ) ?? doc.DocumentNode.SelectNodes("//div[contains(@class, 'grid')]/div");
+        var items = doc.DocumentNode.SelectNodes("//div[contains(@class, 'grid')]/div");
 
         if (items is not { Count: > 0 })
             return Array.Empty<Comic>();
