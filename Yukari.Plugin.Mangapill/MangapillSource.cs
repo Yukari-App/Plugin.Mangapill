@@ -9,8 +9,9 @@ namespace Yukari.Plugin.Mangapill;
 [ComicSourceMetadata(
     "Mangapill",
     "0.1.0-Alpha+core2.4.0",
+    "https://github.com/Yukari-App/Plugin.Mangapill/releases",
     "https://mangapill.com/static/favicon/favicon-32x32.png",
-    "Access a vast array of manga from Mangapill."
+    "Warning: Filters don't work when search box is empty (showing new mangas)."
 )]
 public class MangapillSource : IComicSource, IRequiresHttpClient
 {
