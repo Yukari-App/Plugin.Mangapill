@@ -1,3 +1,6 @@
+using System.Net;
+using System.Text.RegularExpressions;
+using HtmlAgilityPack;
 using Yukari.Core.Models;
 using Yukari.Core.Sources;
 
@@ -108,23 +111,47 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
 
     public void SetHttpClient(ISharedHttpClient httpClient) => _httpClient = httpClient;
 
-    public Task<IReadOnlyList<Comic>> SearchAsync(
+    public async Task<IReadOnlyList<Comic>> SearchAsync(
         string query,
         IReadOnlyDictionary<string, IReadOnlyList<string>> filters,
         int page = 1,
         CancellationToken ct = default
     )
     {
-        throw new NotImplementedException();
+        var queryParams = new Dictionary<string, string[]>
+        {
+            ["q"] = [query],
+            ["page"] = [page.ToString()],
+        };
+
+        foreach (var kvp in filters)
+            queryParams[kvp.Key] = kvp.Value.ToArray();
+
+        string searchUrl = $"{BaseUrl}/search?{ToQueryString(queryParams)}";
+
+        var html = await GetHTMLAsync(searchUrl, ct);
+        if (html == null)
+            return Array.Empty<Comic>();
+
+        return await ParseComicListAsync(html);
     }
 
-    public Task<IReadOnlyList<Comic>> GetTrendingAsync(
+    public async Task<IReadOnlyList<Comic>> GetTrendingAsync(
         IReadOnlyDictionary<string, IReadOnlyList<string>> filters,
         int page = 1,
         CancellationToken ct = default
     )
     {
-        throw new NotImplementedException();
+        if (page > 1)
+            return Array.Empty<Comic>();
+
+        string searchUrl = $"{BaseUrl}/mangas/new";
+
+        var html = await GetHTMLAsync(searchUrl, ct);
+        if (html == null)
+            return Array.Empty<Comic>();
+
+        return await ParseComicListAsync(html);
     }
 
     public Task<Comic?> GetDetailsAsync(string comicId, CancellationToken ct = default)
@@ -159,4 +186,93 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
     {
         return ValueTask.CompletedTask;
     }
+
+    private async Task<IReadOnlyList<Comic>> ParseComicListAsync(string html)
+    {
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html);
+
+        var items =
+            doc.DocumentNode.SelectNodes(
+                "//div[contains(@class, 'grid')]//div[contains(@class, 'relative')]//.."
+            ) ?? doc.DocumentNode.SelectNodes("//div[contains(@class, 'grid')]/div");
+
+        if (items is not { Count: > 0 })
+            return Array.Empty<Comic>();
+
+        var comics = new List<Comic>();
+        foreach (var item in items)
+        {
+            var linkNode = item.SelectSingleNode(".//a[contains(@href, '/manga/')]");
+            if (linkNode == null)
+                continue;
+
+            string href = linkNode.GetAttributeValue("href", "");
+            string? id = ExtractIdFromUrl(href);
+            if (string.IsNullOrEmpty(id))
+                continue;
+
+            var titleNode = item.SelectSingleNode(".//div[contains(@class, 'font-black')]");
+            string title = titleNode?.InnerText.Trim() ?? "Unknown Title";
+
+            var imgNode = linkNode.SelectSingleNode(".//img");
+            string? coverUrl = imgNode?.GetAttributeValue("data-src", null!);
+            coverUrl = coverUrl?.Split("?").FirstOrDefault();
+
+            comics.Add(
+                new Comic(
+                    Id: id,
+                    ComicUrl: null,
+                    Slug: null,
+                    Title: title,
+                    Author: null,
+                    Description: null,
+                    Tags: [],
+                    Year: null,
+                    CoverImageUrl: coverUrl,
+                    Langs: []
+                )
+            );
+        }
+
+        return comics;
+    }
+
+    private async Task<string?> GetHTMLAsync(string url, CancellationToken ct = default)
+    {
+        using var response = await _httpClient!.SendAsync(
+            new HttpRequestMessage(HttpMethod.Get, url),
+            ct
+        );
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            throw new HttpRequestException(
+                "Mangapill Rate Limit Exceeded. Try again later.",
+                null,
+                HttpStatusCode.TooManyRequests
+            );
+
+        if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound)
+            return default;
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsStringAsync(ct);
+    }
+
+    private static string? ExtractIdFromUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return null;
+        var match = Regex.Match(url, @"/manga/(\d+)/");
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private static string ToQueryString(Dictionary<string, string[]> source) =>
+        string.Join(
+            "&",
+            source.SelectMany(kvp =>
+                kvp.Value.Select(v => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(v)}")
+            )
+        );
 }
