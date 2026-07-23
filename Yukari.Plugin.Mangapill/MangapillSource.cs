@@ -43,7 +43,7 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
                     new FilterOption("", "All", true),
                     new FilterOption("publishing", "Ongoing", false),
                     new FilterOption("finished", "Completed", false),
-                    new FilterOption("on+hiatus", "Hiatus", false),
+                    new FilterOption("on hiatus", "Hiatus", false),
                     new FilterOption("discontinued", "Cancelled", false),
                 ],
                 AllowMultiple: false
