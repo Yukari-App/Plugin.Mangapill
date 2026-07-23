@@ -271,13 +271,36 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         return chapters;
     }
 
-    public Task<IReadOnlyList<ChapterPage>> GetChapterPagesAsync(
+    public async Task<IReadOnlyList<ChapterPage>> GetChapterPagesAsync(
         string comicId,
         string chapterId,
         CancellationToken ct = default
     )
     {
-        throw new NotImplementedException();
+        string pagesUrl = $"{BaseUrl}/chapters/{chapterId}";
+
+        var html = await GetHTMLAsync(pagesUrl, ct);
+        if (html == null)
+            return Array.Empty<ChapterPage>();
+
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html);
+
+        var imgNodes = doc.DocumentNode.SelectNodes("//img[contains(@class, 'js-page')]");
+        if (imgNodes is not { Count: > 0 })
+            return Array.Empty<ChapterPage>();
+
+        var pages = new List<ChapterPage>();
+        for (int i = 0; i < imgNodes.Count; i++)
+        {
+            string imageUrl = imgNodes[i].GetAttributeValue("data-src", "");
+            if (string.IsNullOrEmpty(imageUrl))
+                continue;
+
+            pages.Add(new ChapterPage(Number: i + 1, ImageUrl: imageUrl));
+        }
+
+        return pages;
     }
 
     public Task<byte[]?> GetImageBytesAsync(string imageUrl, CancellationToken ct = default)
