@@ -155,9 +155,63 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         return await ParseComicListAsync(html);
     }
 
-    public Task<Comic?> GetDetailsAsync(string comicId, CancellationToken ct = default)
+    public async Task<Comic?> GetDetailsAsync(string comicId, CancellationToken ct = default)
     {
-        throw new NotImplementedException();
+        string detailsUrl = $"{BaseUrl}/manga/{comicId}";
+
+        var html = await GetHTMLAsync(detailsUrl, ct);
+        if (html == null)
+            return null;
+
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html);
+
+        var titleNode = doc.DocumentNode.SelectSingleNode("//h1[contains(@class, 'font-bold')]");
+        string title = titleNode?.InnerText.Trim() ?? "Unknown Title";
+
+        var descNode = doc.DocumentNode.SelectSingleNode(
+            "//p[contains(@class, 'text-sm text--secondary')]"
+        );
+        string? description = descNode?.InnerText.Trim();
+
+        var imgNode = doc.DocumentNode.SelectSingleNode(
+            "//div[contains(@class, 'flex-shrink-0')]//img"
+        );
+        string? coverUrl = imgNode?.GetAttributeValue("data-src", null!);
+        if (!string.IsNullOrEmpty(coverUrl))
+            coverUrl = coverUrl.Split('?').FirstOrDefault();
+
+        var statusNode = doc.DocumentNode.SelectSingleNode(
+            "//label[text()='Status']/following-sibling::div"
+        );
+        string? statusStr = statusNode?.InnerText.Trim();
+
+        var yearNode = doc.DocumentNode.SelectSingleNode(
+            "//label[text()='Year']/following-sibling::div"
+        );
+        int? year = null;
+        if (yearNode != null && int.TryParse(yearNode.InnerText.Trim(), out int y))
+            year = y;
+
+        var genreNodes = doc.DocumentNode.SelectNodes(
+            "//label[text()='Genres']/following-sibling::a"
+        );
+        string[] tags =
+            genreNodes?.Select(g => g.InnerText.Trim()).ToArray() ?? Array.Empty<string>();
+
+        return new Comic(
+            Id: comicId,
+            ComicUrl: detailsUrl,
+            Slug: null,
+            Title: title,
+            Author: null,
+            Description: description,
+            Tags: tags,
+            Year: year,
+            CoverImageUrl: coverUrl,
+            Langs: [SourceLanguage],
+            Status: GetComicStatus(statusStr)
+        );
     }
 
     public Task<IReadOnlyList<Chapter>> GetAllChaptersAsync(
@@ -218,7 +272,8 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
 
             var imgNode = linkNode.SelectSingleNode(".//img");
             string? coverUrl = imgNode?.GetAttributeValue("data-src", null!);
-            coverUrl = coverUrl?.Split("?").FirstOrDefault();
+            if (!string.IsNullOrEmpty(coverUrl))
+                coverUrl = coverUrl.Split("?").FirstOrDefault();
 
             comics.Add(
                 new Comic(
@@ -260,6 +315,16 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
 
         return await response.Content.ReadAsStringAsync(ct);
     }
+
+    private static ComicStatus GetComicStatus(string? status) =>
+        status switch
+        {
+            "publishing" => ComicStatus.Ongoing,
+            "finished" => ComicStatus.Completed,
+            "on hiatus" => ComicStatus.Hiatus,
+            "discontinued" => ComicStatus.Cancelled,
+            _ => ComicStatus.Unknown,
+        };
 
     private static string? ExtractIdFromUrl(string? url)
     {
