@@ -303,9 +303,27 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         return pages;
     }
 
-    public Task<byte[]?> GetImageBytesAsync(string imageUrl, CancellationToken ct = default)
+    public async Task<byte[]?> GetImageBytesAsync(string imageUrl, CancellationToken ct = default)
     {
-        throw new NotImplementedException();
+        if (string.IsNullOrEmpty(imageUrl))
+            return null;
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, imageUrl);
+        request.Headers.Add("Referer", BaseUrl);
+
+        using var response = await _httpClient!.SendAsync(request, ct);
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            throw new HttpRequestException(
+                "Mangapill Rate Limit Exceeded. Try again later.",
+                null,
+                HttpStatusCode.TooManyRequests
+            );
+
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
     public ValueTask DisposeAsync()
