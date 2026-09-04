@@ -3,12 +3,13 @@ using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 using Yukari.Core.Models;
 using Yukari.Core.Sources;
+using Yukari.Core.Sources.Http;
 
 namespace Yukari.Plugin.Mangapill;
 
 [ComicSourceMetadata(
     "Mangapill",
-    "1.0.0+core2.4.0",
+    "1.1.0+core2.5.0",
     "https://github.com/Yukari-App/Plugin.Mangapill/releases",
     "https://mangapill.com/static/favicon/favicon-32x32.png",
     "Warning: Filters don't work when search box is empty (showing new mangas)."
@@ -202,7 +203,6 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
         return new Comic(
             Id: comicId,
             ComicUrl: detailsUrl,
-            Slug: null,
             Title: title,
             Author: null,
             Description: description,
@@ -262,7 +262,7 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
                     Volume: null,
                     Language: language,
                     Groups: string.IsNullOrEmpty(groupName) ? Array.Empty<string>() : [groupName],
-                    LastUpdate: DateOnly.MinValue,
+                    LastUpdate: null,
                     Pages: null
                 )
             );
@@ -365,7 +365,6 @@ public class MangapillSource : IComicSource, IRequiresHttpClient
                 new Comic(
                     Id: id,
                     ComicUrl: null,
-                    Slug: null,
                     Title: title,
                     Author: null,
                     Description: null,
